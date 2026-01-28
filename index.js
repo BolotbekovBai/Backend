@@ -19,13 +19,18 @@ app.get('/api/districts', function(req, res) {
     });
 });
 
-app.get('/api/matches', function(req, res) {
-    var sql = "SELECT streets.name as street, districts.name as district FROM streets JOIN districts ON streets.district_id = districts.id";
-    db.all(sql, [], function(err, rows) {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
+app.get('/api/matches', (req, res) => {
+    const sql = `
+        SELECT 
+            streets.id as street_id, 
+            streets.name as street_name, 
+            districts.name as district_name 
+        FROM streets 
+        JOIN districts ON streets.district_id = districts.id
+    `;
+
+    db.all(sql, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
     });
 });
