@@ -18,13 +18,27 @@ const swaggerOptions = {
         paths: {
             '/api/matches': {
                 get: {
-                    summary: 'Список улиц и районов',
+                    summary: 'Поиск улиц и их районов',
+                    parameters: [{
+                        name: 'name',
+                        in: 'query',
+                        description: 'Название улицы для поиска',
+                        required: false,
+                        schema: { type: 'string' }
+                    }],
                     responses: { '200': { description: 'Успешно' } }
                 }
             },
             '/api/districts': {
                 get: {
-                    summary: 'Список районов',
+                    summary: 'Поиск районов по названию',
+                    parameters: [{
+                        name: 'name',
+                        in: 'query',
+                        description: 'Название района для поиска',
+                        required: false,
+                        schema: { type: 'string' }
+                    }],
                     responses: { '200': { description: 'Успешно' } }
                 }
             }
@@ -40,25 +54,54 @@ app.use(express.json());
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 app.get('/api/matches', (req, res) => {
-    const sql = `
+    const searchName = req.query.name;
+    let sql = `
         SELECT streets.id, streets.name AS streetName, districts.name AS districtName 
         FROM streets 
         JOIN districts ON streets.district_id = districts.id
     `;
-    db.all(sql, [], (err, rows) => {
+    let params = [];
+
+    if (searchName) {
+        sql += " WHERE streets.name LIKE ?";
+        params.push(`%${searchName}%`);
+    }
+
+    db.all(sql, params, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+
+        const formattedRows = rows.map(row => ({
+            ...row,
+            id: row.id.toString()
+        }));
+
+        res.json(formattedRows);
     });
 });
 
 app.get('/api/districts', (req, res) => {
-    db.all("SELECT * FROM districts", [], (err, rows) => {
+    const searchName = req.query.name;
+    let sql = "SELECT * FROM districts";
+    let params = [];
+
+    if (searchName) {
+        sql += " WHERE name LIKE ?";
+        params.push(`%${searchName}%`);
+    }
+
+    db.all(sql, params, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+
+        const formattedRows = rows.map(row => ({
+            ...row,
+            id: row.id.toString()
+        }));
+
+        res.json(formattedRows);
     });
 });
 
 app.listen(PORT, () => {
-    console.log(`http://localhost:${PORT}`);
-    console.log(`http://localhost:${PORT}/api-docs`);
+    console.log(`Сервер: http://localhost:${PORT}`);
+    console.log(`Swagger: http://localhost:${PORT}/api-docs`);
 });
