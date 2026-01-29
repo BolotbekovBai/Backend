@@ -1,67 +1,64 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
+const swaggerJsDoc = require('swagger-jsdoc');
+const swaggerUi = require('swagger-ui-express');
 const cors = require('cors');
+
 const app = express();
+const PORT = 3000;
+const db = new sqlite3.Database('./city.db');
+
+const swaggerOptions = {
+    definition: {
+        openapi: '3.0.0',
+        info: {
+            title: 'Bishkek City API',
+            version: '1.0.0',
+        },
+        paths: {
+            '/api/matches': {
+                get: {
+                    summary: 'Список улиц и районов',
+                    responses: { '200': { description: 'Успешно' } }
+                }
+            },
+            '/api/districts': {
+                get: {
+                    summary: 'Список районов',
+                    responses: { '200': { description: 'Успешно' } }
+                }
+            }
+        }
+    },
+    apis: [],
+};
+
+const swaggerDocs = swaggerJsDoc(swaggerOptions);
 
 app.use(cors());
 app.use(express.json());
-
-const db = new sqlite3.Database('./city.db');
-
-app.get('/api/districts', function(req, res) {
-    var sql = "SELECT * FROM districts";
-    db.all(sql, [], function(err, rows) {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        res.json(rows);
-    });
-});
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 app.get('/api/matches', (req, res) => {
     const sql = `
-        SELECT 
-            streets.id as street_id, 
-            streets.name as street_name, 
-            districts.name as district_name 
+        SELECT streets.id, streets.name AS streetName, districts.name AS districtName 
         FROM streets 
         JOIN districts ON streets.district_id = districts.id
     `;
-
     db.all(sql, [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
     });
 });
 
-app.get('/api/search', function(req, res) {
-    var name = req.query.name;
-    var sql = "SELECT streets.name as street, districts.name as district FROM streets JOIN districts ON streets.district_id = districts.id WHERE streets.name LIKE ? OR districts.name LIKE ?";
-    var params = ["%" + name + "%", "%" + name + "%"];
-
-    db.all(sql, params, function(err, rows) {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
+app.get('/api/districts', (req, res) => {
+    db.all("SELECT * FROM districts", [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
     });
 });
 
-app.post('/api/streets', function(req, res) {
-    var name = req.body.name;
-    var district_id = req.body.district_id;
-    var sql = "INSERT INTO streets (name, district_id) VALUES (?, ?)";
-    db.run(sql, [name, district_id], function(err) {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        res.json({ id: this.lastID, name: name, district_id: district_id });
-    });
-});
-
-app.listen(3000, function() {
-    console.log("Server: http://localhost:3000");
+app.listen(PORT, () => {
+    console.log(`http://localhost:${PORT}`);
+    console.log(`http://localhost:${PORT}/api-docs`);
 });
