@@ -13,33 +13,72 @@ const swaggerOptions = {
         openapi: '3.0.0',
         info: {
             title: 'Bishkek City API',
-            version: '1.0.0',
+            version: '2.0.0',
         },
         paths: {
             '/api/matches': {
                 get: {
-                    summary: 'Поиск улиц и их районов',
-                    parameters: [{
-                        name: 'name',
-                        in: 'query',
-                        description: 'Название улицы для поиска',
-                        required: false,
-                        schema: { type: 'string' }
-                    }],
-                    responses: { '200': { description: 'Успешно' } }
+                    summary: 'Поиск улиц',
+                    parameters: [
+                        { name: 'name', in: 'query', schema: { type: 'string' } },
+                        { name: 'districtId', in: 'query', schema: { type: 'string' } }
+                    ],
+                    responses: {
+                        '200': { description: 'Успешно' },
+                        '404': { description: 'Ничего не найдено' }
+                    }
                 }
             },
             '/api/districts': {
                 get: {
-                    summary: 'Поиск районов по названию',
-                    parameters: [{
-                        name: 'name',
-                        in: 'query',
-                        description: 'Название района для поиска',
-                        required: false,
-                        schema: { type: 'string' }
-                    }],
-                    responses: { '200': { description: 'Успешно' } }
+                    summary: 'Список районов',
+                    parameters: [
+                        { name: 'name', in: 'query', schema: { type: 'string' } }
+                    ],
+                    responses: {
+                        '200': { description: 'Успешно' },
+                        '404': { description: 'Ничего не найдено' }
+                    }
+                }
+            },
+            '/api/streets/{id}': {
+                put: {
+                    summary: 'Редактировать улицу',
+                    parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                    requestBody: {
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: { name: { type: 'string' } }
+                                }
+                            }
+                        }
+                    },
+                    responses: {
+                        '200': { description: 'Обновлено' },
+                        '404': { description: 'ID не найден' }
+                    }
+                }
+            },
+            '/api/districts/{id}': {
+                put: {
+                    summary: 'Редактировать район',
+                    parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                    requestBody: {
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: { name: { type: 'string' } }
+                                }
+                            }
+                        }
+                    },
+                    responses: {
+                        '200': { description: 'Обновлено' },
+                        '404': { description: 'ID не найден' }
+                    }
                 }
             }
         }
@@ -54,54 +93,80 @@ app.use(express.json());
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 app.get('/api/matches', (req, res) => {
-    const searchName = req.query.name;
-    let sql = `
-        SELECT streets.id, streets.name AS streetName, districts.name AS districtName 
-        FROM streets 
-        JOIN districts ON streets.district_id = districts.id
-    `;
+    const { name, districtId } = req.query;
+    let sql = `SELECT streets.id, streets.name AS streetName, districts.name AS districtName 
+               FROM streets 
+               JOIN districts ON streets.district_id = districts.id 
+               WHERE 1=1`;
     let params = [];
 
-    if (searchName) {
-        sql += " WHERE streets.name LIKE ?";
-        params.push(`%${searchName}%`);
+    if (name) {
+        sql += " AND streets.name LIKE ?";
+        params.push(`%${name}%`);
+    }
+
+    if (districtId) {
+        sql += " AND streets.district_id = ?";
+        params.push(districtId);
     }
 
     db.all(sql, params, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
+        if (rows.length === 0) return res.status(404).json({ message: "По вашему запросу ничего не найдено" });
 
-        const formattedRows = rows.map(row => ({
-            ...row,
-            id: row.id.toString()
-        }));
-
-        res.json(formattedRows);
+        const formatted = rows.map(r => ({...r, id: r.id.toString() }));
+        res.json(formatted);
     });
 });
 
 app.get('/api/districts', (req, res) => {
-    const searchName = req.query.name;
-    let sql = "SELECT * FROM districts";
+    const { name } = req.query;
+    let sql = "SELECT * FROM districts WHERE 1=1";
     let params = [];
 
-    if (searchName) {
-        sql += " WHERE name LIKE ?";
-        params.push(`%${searchName}%`);
+    if (name) {
+        sql += " AND name LIKE ?";
+        params.push(`%${name}%`);
     }
 
     db.all(sql, params, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
+        if (rows.length === 0) return res.status(404).json({ message: "По вашему запросу ничего не найдено" });
 
-        const formattedRows = rows.map(row => ({
-            ...row,
-            id: row.id.toString()
-        }));
+        const formatted = rows.map(r => ({...r, id: r.id.toString() }));
+        res.json(formatted);
+    });
+});
 
-        res.json(formattedRows);
+app.put('/api/streets/:id', (req, res) => {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    if (!name) return res.status(400).json({ message: "Отсутствует название" });
+
+    db.run("UPDATE streets SET name = ? WHERE id = ?", [name, id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        if (this.changes === 0) return res.status(404).json({ message: "Улица с таким ID не найдена" });
+
+        res.json({ id: id.toString(), newName: name, message: "Успешно обновлено" });
+    });
+});
+
+app.put('/api/districts/:id', (req, res) => {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    if (!name) return res.status(400).json({ message: "Отсутствует название" });
+
+    db.run("UPDATE districts SET name = ? WHERE id = ?", [name, id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        if (this.changes === 0) return res.status(404).json({ message: "Район с таким ID не найден" });
+
+        res.json({ id: id.toString(), newName: name, message: "Успешно обновлено" });
     });
 });
 
 app.listen(PORT, () => {
-    console.log(`Сервер: http://localhost:${PORT}`);
-    console.log(`Swagger: http://localhost:${PORT}/api-docs`);
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Swagger docs at http://localhost:${PORT}/api-docs`);
 });
